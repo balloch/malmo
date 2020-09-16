@@ -23,7 +23,6 @@ from __future__ import division
 
 from builtins import range
 from past.utils import old_div
-import MalmoPython
 import os
 import random
 import sys
@@ -31,7 +30,13 @@ import time
 import json
 import errno
 from timeit import default_timer as timer
-import malmoutils
+
+try:
+    import MalmoPython
+    import malmoutils
+except ImportError:
+    import malmo.MalmoPython as MalmoPython
+    import malmo.malmoutils as malmoutils
 
 malmoutils.fix_print()
 

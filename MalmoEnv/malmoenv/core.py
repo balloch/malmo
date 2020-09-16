@@ -44,7 +44,9 @@ class ActionSpace(gym.spaces.Discrete):
     """Malmo actions as gym action space"""
     def __init__(self, actions):
         self.actions = actions
-        gym.spaces.Discrete.__init__(self, len(self.actions))
+        super(ActionSpace, self).__init__(len(self.actions))
+        # gym.spaces.Discrete.__init__(self, len(self.actions))
+        self.shape = tuple([len(self.actions)])
 
     def sample(self):
         return random.randint(1, len(self.actions)) - 1
@@ -81,7 +83,8 @@ MAX_WAIT = 60 * 3
 
 class Env:
     """Malmo "Env" open ai gym compatible environment API"""
-    def __init__(self, reshape=False):
+    def __init__(self, gymstandard=True,reshape=False):
+        self.gymstandard=gymstandard
         self.action_space = None
         self.observation_space = None
         self.metadata = {'render.modes': ['rgb_array']}
@@ -147,6 +150,8 @@ class Env:
 
         if action_space:
             self.action_space = action_space
+        #elif self.gymstandard:
+        #    gym.spaces.Discrete(len(actions))
         else:
             self.action_space = ActionSpace(actions)
 
@@ -217,7 +222,14 @@ class Env:
         want_depth = video_producer.attrib["want_depth"]
         self.depth = 4 if want_depth is not None and (want_depth == "true" or want_depth == "1") else 3
         # print(str(self.width) + "x" + str(self.height) + "x" + str(self.depth))
-        self.observation_space = VisualObservationSpace(self.width, self.height, self.depth)
+        if self.gymstandard:
+            self.observation_space = gym.spaces.Box(
+                    low=np.iinfo(np.uint8).min, 
+                    high=np.iinfo(np.uint8).max,
+                    shape=(self.depth, self.height, self.width), dtype=np.uint8)
+            print(self.observation_space.sample().shape)
+        else:
+            self.observation_space = VisualObservationSpace(self.width, self.height, self.depth)
         # print(etree.tostring(self.xml))
 
     @staticmethod
@@ -246,6 +258,10 @@ class Env:
         if not self.client_socket:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # print("connect " + self.server2 + ":" + str(self.port2))
+            
+            #Added by balloch 5-2020
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            
             sock.connect((self.server2, self.port2))
             self._hello(sock)
             self.client_socket = sock  # Now retries will use connected socket.
@@ -273,10 +289,14 @@ class Env:
             obs = np.frombuffer(obs, dtype=np.uint8)
 
         if obs is None or len(obs) == 0 or obs.size == 0:
-            if self.reshape:
+            if self.gymstandard:
+                obs = np.zeros((self.depth, self.height, self.width), dtype=np.uint8)
+            elif self.reshape:
                 obs = np.zeros((self.height, self.width, self.depth), dtype=np.uint8)
             else: 
                 obs = np.zeros(self.height * self.width * self.depth, dtype=np.uint8)
+        elif self.gymstandard:
+            obs = obs.reshape((self.depth, self.height, self.width)).astype(np.uint8)
         elif self.reshape:
             obs = obs.reshape((self.height, self.width, self.depth)).astype(np.uint8)
         self.last_obs = obs
@@ -291,7 +311,9 @@ class Env:
     def render(self, mode=None):
         """gym api render"""
         if self.last_obs is None:
-            if self.reshape:
+            if self.gymstandard:
+                self.last_obs = np.zeros((self.dept, hself.height, self.width), dtype=np.uint8)
+            elif self.reshape:
                 self.last_obs = np.zeros((self.height, self.width, self.depth), dtype=np.uint8)
             else:
                 self.last_obs = np.zeros(self.height * self.width * self.depth, dtype=np.uint8)
@@ -340,9 +362,13 @@ class Env:
             if (obs is None or len(obs) == 0) or turn:
                 time.sleep(0.1)
             obs = np.frombuffer(obs, dtype=np.uint8)
-
-        if self.reshape:
-            if obs.size == 0:
+        if self.gymstandard:
+            if (obs is None) or (obs.size == 0):
+                obs = np.zeros((self.depth, self.height, self.width), dtype=np.uint8)
+            else:
+                obs = obs.reshape((self.depth, self.height, self.width)).astype(np.uint8)
+        elif self.reshape:
+            if (obs is None) or (obs.size == 0):
                 obs = np.zeros((self.height, self.width, self.depth), dtype=np.uint8)
             else:
                 obs = obs.reshape((self.height, self.width, self.depth)).astype(np.uint8)
@@ -358,6 +384,9 @@ class Env:
             sock.connect((self.server, self.port))
             self._hello(sock)
 
+            #Added by balloch 5-2020
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            
             comms.send_message(sock, ("<Close>" + self._get_token() + "</Close>").encode())
             reply = comms.recv_message(sock)
             ok, = struct.unpack('!I', reply)
@@ -375,6 +404,9 @@ class Env:
         sock.connect((self.server, self.port))
         self._hello(sock)
 
+        #Added by balloch 5-2020
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        
         comms.send_message(sock, ("<Init>" + self._get_token() + "</Init>").encode())
         reply = comms.recv_message(sock)
         sock.close()
@@ -392,6 +424,9 @@ class Env:
             sock.connect((self.server2, self.port2))
         self._hello(sock)
 
+        #Added by balloch 5-2020
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        
         comms.send_message(sock, "<Status/>".encode())
         status = comms.recv_message(sock).decode('utf-8')
         sock.close()
@@ -405,6 +440,9 @@ class Env:
         sock.connect((self.server2, self.port2))
         self._hello(sock)
 
+        #Added by balloch 5-2020
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        
         comms.send_message(sock, ("<Exit>" + self._get_token() + "</Exit>").encode())
         reply = comms.recv_message(sock)
         sock.close()
@@ -452,6 +490,10 @@ class Env:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((self.server, self.port))
         self._hello(sock)
+
+        #Added by balloch 5-2020
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
 
         start_time = time.time()
         port = 0

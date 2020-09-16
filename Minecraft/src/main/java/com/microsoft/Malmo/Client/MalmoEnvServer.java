@@ -122,6 +122,9 @@ public class MalmoEnvServer implements IWantToQuit {
             try {
                 final Socket socket = serverSocket.accept();
 
+                //added by balloch 5-2020
+                socket.setTcpNoDelay(true);
+
                 Thread thread = new Thread("EnvServerSocketHandler") {
                     public void run() {
                         boolean running = false;
